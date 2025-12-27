@@ -1,0 +1,175 @@
+---
+# yamllint disable rule:line-length
+name: "CI Workflow"
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - main
+    tags: ["v*"]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: "Pre-commit checks"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Install uv
+        # https://github.com/astral-sh/setup-uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install pre-commit
+        run: uv tool install pre-commit
+
+      - name: Enable cache for pre-commit hooks
+        # https://github.com/actions/cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          path: ~/.cache/pre-commit
+          # yamllint disable-line rule:line-length
+          key: pre-commit|${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit|
+
+      - name: Run pre-commit checks
+        run: pre-commit run -a
+
+      - name: Run pre-commit gc
+        run: pre-commit gc
+
+  # This job builds the devcontainer image, but doesn't do anything with it.
+  # It's just here to make sure the image builds successfully.
+  devcontainer:
+    name: "Build devcontainer image"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up Docker Buildx
+        # https://github.com/docker/setup-buildx-action
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        id: setup-buildx
+
+      - name: Expose variables required for actions cache
+        # https://github.com/crazy-max/ghaction-github-runtime
+        uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
+
+      - name: Build devcontainer
+        run: npx -- @devcontainers/cli build --workspace-folder . --cache-from type=gha,scope=devcontainer --cache-to type=gha,mode=min,scope=devcontainer
+
+  test:
+    name: "Run tests"
+    runs-on: ubuntu-latest
+    env:
+      UV_LOCKED: true
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install uv
+        # https://github.com/astral-sh/setup-uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: Pyright
+        run: uv run pyright
+
+  sbom:
+    name: Software Bill of Materials
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main') }}
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        # https://github.com/astral-sh/setup-uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+
+      - name: Set up Python
+        # https://github.com/actions/setup-python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version-file: ".python-version"
+
+      - name: Generate requirements.txt
+        run: uv export --locked --format requirements-txt > requirements.txt
+
+      - name: Generate & upload SBOM
+        # https://github.com/anchore/sbom-action
+        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          artifact-name: sbom-spdx.json
+          dependency-snapshot: true
+          file: requirements.txt
+          format: spdx-json
+
+  # This is a dummy job to determine success of the CI workflow
+  ci-success:
+    name: CI Workflow - Success
+    needs:
+      - devcontainer
+      - pre-commit
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Success
+        run: echo "Previous jobs were successful"
+
+  # This job publishes the package to PyPI when a new tag is pushed
+  publish:
+    name: "Publish to PyPI"
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs:
+      - ci-success
+    runs-on: ubuntu-latest
+    env:
+      UV_LOCKED: true
+    permissions:  # https://docs.pypi.org/trusted-publishers/using-a-publisher/
+      contents: read
+      id-token: write  # Required for publishing to PyPI via trusted publisher
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install uv
+        # https://github.com/astral-sh/setup-uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+
+      - name: Build release artifacts
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish

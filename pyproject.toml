@@ -1,0 +1,125 @@
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.407",
+    "pytest==9.0.2",
+    "pytest-cov==7.0.0",
+]
+
+[project]
+name = "CommonCast"
+version = "0.1.0"
+description = "A unified API for casting images to devices"
+authors = [
+    { name = "John Strunk", email = "john.strunk@gmail.com" }
+]
+requires-python = ">=3.10"  # https://devguide.python.org/versions/
+classifiers = [  # https://pypi.org/classifiers/
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Graphics :: Presentation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = []
+license = "LGPL-3.0-only"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/JohnStrunk/CommonCast"
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self.debug",
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+    # Don't complain about abstract methods, they aren't run:
+    "@(abc.)?abstractmethod",
+]
+omit = ["*_test.py", "test_*.py"]  # Omit test files from coverage report
+
+[tool.coverage.run]
+branch = true    # Enable branch coverage
+source = ["src"] # Source code directories
+
+[tool.pyright]
+# https://microsoft.github.io/pyright/#/configuration
+deprecateTypingAliases = true
+enableReachabilityAnalysis = true
+include = ["."]
+pythonPlatform = "All"
+reportUnnecessaryTypeIgnoreComment = true
+typeCheckingMode = "strict"
+useLibraryCodeForTypes = true
+verboseOutput = true
+
+[tool.pytest.ini_options]
+addopts = [
+    "-q",
+    "--doctest-modules",
+    "--cov=.",
+    "--cov-config=.coveragerc",
+    "--cov-report=html",
+    "--cov-report=term",
+    "--cov-report=xml",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+indent-style = "space"
+quote-style = "double"
+
+[tool.ruff.lint]
+# https://docs.astral.sh/ruff/rules/
+pydocstyle.convention = "pep257"
+select = [
+    "D",     # Pydocstyle
+    "DOC",   # Pydoclint
+    "E101",  # Pycodestyle: mixed spaces and tabs
+    "E4",    # Pycodestyle: Imports
+    "E7",    # Pycodestyle: misc
+    "E9",    # Pycodestyle: error
+    "F",     # Pyflakes
+    "FAST",  # FastAPI-specific
+    "I",     # isort
+    "PL",    # pylint
+    "RUF",   # Ruff-specific
+    "UP",    # Pyupgrade
+    "W",     # Pycodestyle: warning
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore magic value (PLR2004) in test files
+"*_test.py" = ["PLR2004"]
+"test_*.py" = ["PLR2004"]
+
+[tool.uv]
+add-bounds = "exact" # Add exact version bounds to dependencies
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+]
+resolution = "highest" # Use the highest version of dependencies
+
+[tool.uv.pip]
+universal = true

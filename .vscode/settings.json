@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        ".github/lint-all.sh": true,
+        "pre-commit run": true,
+        "markdownlint": true,
+        "ruff": true,
+        "uv run pyright": true,
+        "uv run pytest": true
+    }
+}
