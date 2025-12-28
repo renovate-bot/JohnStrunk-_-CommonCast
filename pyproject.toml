@@ -92,7 +92,8 @@ quote-style = "double"
 pydocstyle.convention = "pep257"
 select = [
     "D",     # Pydocstyle
-    "DOC",   # Pydoclint
+    # Pydoclint disabled until it supports Sphinx-style docstrings better
+    # "DOC",   # Pydoclint
     "E101",  # Pycodestyle: mixed spaces and tabs
     "E4",    # Pycodestyle: Imports
     "E7",    # Pycodestyle: misc

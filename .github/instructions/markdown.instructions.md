@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.md"
+applyTo: "**"
 description: "Formatting and linting standards for Markdown files"
 ---
 
