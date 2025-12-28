@@ -80,6 +80,11 @@ def divide_numbers(a: float, b: float) -> float:
   and be as small as possible while still being functional.
 - Use functional programming principles where possible. Avoid unnecessary
   state and side effects.
+- Do not use the `from package import foo` syntax. This causes namespace
+  pollution. Always use `import package` and reference functions and classes
+  with the package prefix (e.g., `package.foo`). For nested packages, you may
+  use `import package.sub as _sub`, then reference with `_sub.foo` to keep
+  identifier length reasonable.
 
 ## Testing
 
