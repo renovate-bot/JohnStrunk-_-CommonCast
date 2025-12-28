@@ -1,5 +1,5 @@
 ---
-applyTo: "**/pyproject.toml, **/.python-version"
+applyTo: "**"
 description: "Standards for configuring Python project files"
 ---
 

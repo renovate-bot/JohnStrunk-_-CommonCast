@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.py, **/pyproject.toml, **/.python-version"
+applyTo: "**"
 description: "Python development standards for code quality, formatting, linting, and testing"
 ---
 
@@ -38,8 +38,8 @@ standards.
   to a Python file, run `pre-commit run --files <filename>` to ensure
   compliance. Fix **ALL** linting and formatting errors reported.
 - Code must be fully documented and include type annotations for all
-  functions, methods, classes, and packages. Use reStructuredText style for
-  docstrings.
+  functions, methods, classes, and packages. Use reStructuredText/sphinx style
+  for docstrings.
   - Parameters and return values are documented using the `:param` and
     `:returns:` directives in docstrings.
   - Do not repeat type information in docstrings that is already present in
