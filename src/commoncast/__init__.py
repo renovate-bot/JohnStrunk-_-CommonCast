@@ -33,7 +33,10 @@ from commoncast.types import (
 
 
 def list_devices() -> list[Device]:
-    """Return a snapshot list of known devices (non-blocking)."""
+    """Return a snapshot list of known devices (non-blocking).
+
+    :returns: List of discovered Device instances.
+    """
     return _REGISTRY.list_devices()
 
 
@@ -58,7 +61,10 @@ def subscribe_sync(callback: Callable[[DeviceEvent], None]) -> Subscription:
 
 
 def events() -> AsyncIterator[DeviceEvent]:
-    """Return an async iterator that yields DeviceEvent objects as they occur."""
+    """Return an async iterator that yields DeviceEvent objects as they occur.
+
+    :returns: Async iterator yielding DeviceEvent objects.
+    """
     return _REGISTRY.events()
 
 
@@ -84,12 +90,21 @@ async def stop() -> None:
 
 
 def start_sync(*, media_host: str | None = "0.0.0.0", media_port: int = 0) -> None:
-    """Start the system synchronously (convenience wrapper for start())."""
+    """Start the system synchronously (convenience wrapper for start()).
+
+    :param media_host: Host interface to bind the media server to, or None to
+        disable the embedded server.
+    :param media_port: Port to bind the media server to (0 selects a free port).
+    :returns: None
+    """
     _REGISTRY.start_sync(media_host=media_host, media_port=media_port)
 
 
 def stop_sync() -> None:
-    """Stop the system synchronously (convenience wrapper for stop())."""
+    """Stop the system synchronously (convenience wrapper for stop()).
+
+    :returns: None
+    """
     _REGISTRY.stop_sync()
 
 

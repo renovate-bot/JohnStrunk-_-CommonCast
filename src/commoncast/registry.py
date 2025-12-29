@@ -53,6 +53,8 @@ class Registry:
         """Create a new Registry instance.
 
         Initializes internal state used to track devices and subscribers.
+
+        :returns: None
         """
         self._devices: dict[DeviceID, Device] = {}
         self._event_queue: asyncio.Queue[DeviceEvent] = asyncio.Queue()
@@ -141,6 +143,8 @@ class Registry:
 
         Stop adapters and emit DeviceRemoved events for any devices that are
         no longer reachable as a result.
+
+        :returns: None
         """
         async with self._lock:
             if not self._running:
@@ -159,6 +163,10 @@ class Registry:
         """Start the registry synchronously.
 
         Convenience wrapper for start() for consumers that prefer blocking APIs.
+
+        :param args: Positional arguments passed to start().
+        :param kwargs: Keyword arguments passed to start().
+        :returns: None
         """
         asyncio.run(self.start(*args, **kwargs))
 
@@ -166,6 +174,8 @@ class Registry:
         """Stop the registry synchronously.
 
         Convenience wrapper for stop() for consumers that prefer blocking APIs.
+
+        :returns: None
         """
         asyncio.run(self.stop())
 
@@ -173,6 +183,7 @@ class Registry:
         """Enable a named protocol backend.
 
         :param name: Backend identifier to enable.
+        :returns: None
         """
         info = self._backends.setdefault(name, {})
         info.setdefault("enabled", True)
@@ -182,16 +193,24 @@ class Registry:
         """Disable a named protocol backend.
 
         :param name: Backend identifier to disable.
+        :returns: None
         """
         info = self._backends.setdefault(name, {})
         info["enabled"] = False
 
     def list_backends(self) -> dict[str, dict[str, Any]]:
-        """Return a mapping of backend names to their state information."""
+        """Return a mapping of backend names to their state information.
+
+        :returns: Dictionary mapping backend names to their status info.
+        """
         return dict(self._backends)
 
     async def _publish_event(self, ev: DeviceEvent) -> None:
-        """Publish an event to subscribers and the async iterator queue."""
+        """Publish an event to subscribers and the async iterator queue.
+
+        :param ev: The DeviceEvent to publish.
+        :returns: None
+        """
         # Put on queue for async pull consumers
         await self._event_queue.put(ev)
         # Dispatch to async subscribers

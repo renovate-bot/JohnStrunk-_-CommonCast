@@ -71,21 +71,31 @@ class MediaController(Protocol):
     """Interface for controlling active media playback."""
 
     async def play(self) -> None:
-        """Resume playback."""
+        """Resume playback.
+
+        :returns: None
+        """
         ...
 
     async def pause(self) -> None:
-        """Pause playback."""
+        """Pause playback.
+
+        :returns: None
+        """
         ...
 
     async def stop(self) -> None:
-        """Stop playback and clear the session."""
+        """Stop playback and clear the session.
+
+        :returns: None
+        """
         ...
 
     async def seek(self, position: float) -> None:
         """Seek to a specific position in seconds.
 
         :param position: Target position in seconds from the beginning.
+        :returns: None
         """
         ...
 
@@ -93,6 +103,7 @@ class MediaController(Protocol):
         """Set the volume level.
 
         :param level: Volume level between 0.0 and 1.0.
+        :returns: None
         """
         ...
 
@@ -100,19 +111,14 @@ class MediaController(Protocol):
         """Mute or unmute the device.
 
         :param mute: True to mute, False to unmute.
+        :returns: None
         """
         ...
 
 
 @dataclass(init=False)
 class SendResult:
-    """Result describing outcome of a send_media operation.
-
-    :param success: True when the send completed successfully.
-    :param reason: Optional human-readable failure reason when success is False.
-    :param metadata: Optional additional metadata returned by the transport.
-    :param controller: Optional MediaController if a session was established.
-    """
+    """Result describing outcome of a send_media operation."""
 
     success: bool
     reason: str | None = None
@@ -128,7 +134,11 @@ class SendResult:
     ) -> None:
         """Initialize a SendResult.
 
-        See the class docstring for parameter descriptions.
+        :param success: True when the send completed successfully.
+        :param reason: Optional human-readable failure reason when success is False.
+        :param metadata: Optional additional metadata returned by the transport.
+        :param controller: Optional MediaController if a session was established.
+        :returns: None
         """
         self.success = success
         self.reason = reason
@@ -138,15 +148,7 @@ class SendResult:
 
 @dataclass(init=False)
 class MediaPayload:
-    """A container representing media to send to a device.
-
-    :param data: Raw bytes for the payload when available.
-    :param path: Local filesystem path to the media when used.
-    :param url: Remote URL referencing the media when used.
-    :param mime_type: Optional mime-type hint.
-    :param size: Optional size in bytes.
-    :param metadata: Optional rich metadata for the media.
-    """
+    """A container representing media to send to a device."""
 
     data: bytes | None
     path: Path | None
@@ -166,7 +168,13 @@ class MediaPayload:
     ) -> None:
         """Initialize a MediaPayload.
 
-        See the class docstring for parameter meanings.
+        :param data: Raw bytes for the payload when available.
+        :param path: Local filesystem path to the media when used.
+        :param url: Remote URL referencing the media when used.
+        :param mime_type: Optional mime-type hint.
+        :param size: Optional size in bytes.
+        :param metadata: Optional rich metadata for the media.
+        :returns: None
         """
         self.data = data
         self.path = path
@@ -248,15 +256,7 @@ class MediaPayload:
 
 @dataclass(init=False)
 class Device:
-    """Representation of a discovered renderer device.
-
-    :param id: Stable device identifier.
-    :param name: Human-friendly device name.
-    :param model: Optional model string reported by the device.
-    :param transport: Underlying transport name (e.g., "chromecast").
-    :param capabilities: Declared device capabilities.
-    :param transport_info: Transport-specific connection details.
-    """
+    """Representation of a discovered renderer device."""
 
     id: DeviceID
     name: str
@@ -276,7 +276,13 @@ class Device:
     ) -> None:
         """Initialize a Device instance.
 
-        See class docstring for parameter descriptions.
+        :param id: Stable device identifier.
+        :param name: Human-friendly device name.
+        :param model: Optional model string reported by the device.
+        :param transport: Underlying transport name (e.g., "chromecast").
+        :param capabilities: Declared device capabilities.
+        :param transport_info: Transport-specific connection details.
+        :returns: None
         """
         self.id = id
         self.name = name
@@ -355,11 +361,15 @@ class Subscription:
         """Create a Subscription that calls the provided unsubscribe function.
 
         :param unsubscribe: Callable invoked to cancel the subscription.
+        :returns: None
         """
         self._unsubscribe = unsubscribe
 
     def unsubscribe(self) -> None:
-        """Cancel the subscription and stop receiving events."""
+        """Cancel the subscription and stop receiving events.
+
+        :returns: None
+        """
         self._unsubscribe()
 
 
