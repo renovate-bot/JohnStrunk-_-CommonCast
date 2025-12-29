@@ -311,7 +311,7 @@ class Device:
                   a MediaController.
         """
         # Lazy import to avoid circular dependencies
-        from commoncast.registry import default_registry  # noqa: PLC0415
+        import commoncast.registry as _registry  # noqa: PLC0415
 
         # Backfill legacy title into metadata if not present
         if title and not media.metadata:
@@ -319,7 +319,7 @@ class Device:
         elif title and media.metadata and not media.metadata.title:
             media.metadata.title = title
 
-        return await default_registry.send_media(
+        return await _registry.default_registry.send_media(
             self, media, format=format, timeout=timeout, options=options
         )
 

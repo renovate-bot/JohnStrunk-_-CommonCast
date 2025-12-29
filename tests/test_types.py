@@ -2,20 +2,16 @@
 
 from pathlib import Path
 
-from commoncast.types import (
-    Capability,
-    Device,
-    DeviceID,
-    MediaImage,
-    MediaMetadata,
-    MediaPayload,
-)
+import commoncast.types as _types
 
 
 def test_media_metadata() -> None:
-    """Test MediaMetadata creation."""
-    img = MediaImage(url="http://example.com/art.jpg", width=100, height=100)
-    meta = MediaMetadata(
+    """Test MediaMetadata creation.
+
+    :returns: None
+    """
+    img = _types.MediaImage(url="http://example.com/art.jpg", width=100, height=100)
+    meta = _types.MediaMetadata(
         title="Test Title",
         subtitle="Subtitle",
         images=[img],
@@ -28,9 +24,12 @@ def test_media_metadata() -> None:
 
 
 def test_media_payload_from_bytes() -> None:
-    """Test creating MediaPayload from raw bytes."""
+    """Test creating MediaPayload from raw bytes.
+
+    :returns: None
+    """
     data = b"hello world"
-    payload = MediaPayload.from_bytes(data, mime_type="text/plain")
+    payload = _types.MediaPayload.from_bytes(data, mime_type="text/plain")
     assert payload.data == data
     assert payload.mime_type == "text/plain"
     assert payload.size == len(data)
@@ -40,10 +39,14 @@ def test_media_payload_from_bytes() -> None:
 
 
 def test_media_payload_from_path(tmp_path: Path) -> None:
-    """Test creating MediaPayload from a file path."""
+    """Test creating MediaPayload from a file path.
+
+    :param tmp_path: The tmp_path fixture.
+    :returns: None
+    """
     f = tmp_path / "test.txt"
     f.write_text("hello file")
-    payload = MediaPayload.from_path(f, mime_type="text/plain")
+    payload = _types.MediaPayload.from_path(f, mime_type="text/plain")
     assert payload.path == f
     assert payload.mime_type == "text/plain"
     assert payload.size == 10
@@ -52,10 +55,13 @@ def test_media_payload_from_path(tmp_path: Path) -> None:
 
 
 def test_media_payload_from_url() -> None:
-    """Test creating MediaPayload from a URL."""
+    """Test creating MediaPayload from a URL.
+
+    :returns: None
+    """
     url = "http://example.com/movie.mp4"
-    meta = MediaMetadata(title="Movie")
-    payload = MediaPayload.from_url(url, mime_type="video/mp4", metadata=meta)
+    meta = _types.MediaMetadata(title="Movie")
+    payload = _types.MediaPayload.from_url(url, mime_type="video/mp4", metadata=meta)
     assert payload.url == url
     assert payload.mime_type == "video/mp4"
     assert payload.size is None
@@ -66,13 +72,16 @@ def test_media_payload_from_url() -> None:
 
 
 def test_device_creation() -> None:
-    """Test Device initialization."""
-    dev = Device(
-        id=DeviceID("dev1"),
+    """Test Device initialization.
+
+    :returns: None
+    """
+    dev = _types.Device(
+        id=_types.DeviceID("dev1"),
         name="Living Room",
         model="Chromecast",
         transport="chromecast",
-        capabilities={Capability("video"), Capability("audio")},
+        capabilities={_types.Capability("video"), _types.Capability("audio")},
         transport_info={"ip": "192.168.1.10"},
     )
     assert dev.id == "dev1"
