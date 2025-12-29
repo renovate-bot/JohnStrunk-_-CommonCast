@@ -29,5 +29,8 @@
     "containerEnv": {
         "COPILOT_ALLOW_ALL": "true",
         "COPILOT_MODEL": "gpt-5-mini"
-    }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gemini,target=/home/vscode/.gemini,type=bind,consistency=cached"
+    ]
 }
