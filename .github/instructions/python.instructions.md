@@ -38,8 +38,8 @@ standards.
   to a Python file, run `pre-commit run --files <filename>` to ensure
   compliance. Fix **ALL** linting and formatting errors reported.
 - Code must be fully documented and include type annotations for all
-  functions, methods, classes, and packages. Use reStructuredText/sphinx style
-  for docstrings.
+  functions, methods, classes, class members, public variables and constants,
+  and packages. Use reStructuredText/sphinx style for docstrings.
   - Parameters and return values are documented using the `:param` and
     `:returns:` directives in docstrings.
   - Do not repeat type information in docstrings that is already present in
@@ -80,6 +80,11 @@ def divide_numbers(a: float, b: float) -> float:
   and be as small as possible while still being functional.
 - Use functional programming principles where possible. Avoid unnecessary
   state and side effects.
+- Do not use the `from package import foo` syntax. This causes namespace
+  pollution. Always use `import package` and reference functions and classes
+  with the package prefix (e.g., `package.foo`). For nested packages, you may
+  use `import package.sub as _sub`, then reference with `_sub.foo` to keep
+  identifier length reasonable.
 
 ## Testing
 
