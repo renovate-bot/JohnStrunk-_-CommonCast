@@ -95,8 +95,8 @@ Users can consume events in two ways:
 
 ## Backend Interface Specification
 
-Every backend must implement an "Adapter" class. While not strictly enforced by
-a base class yet, it should follow this pattern:
+Every backend must implement an "Adapter" class that inherits from
+`commoncast.types.BackendAdapter`.
 
 ### 1. Adapter Lifecycle
 
@@ -115,11 +115,11 @@ Stops discovery and cleans up resources.
 ### 2. Device Management
 
 Adapters are responsible for discovering devices and notifying the registry
-using internal methods:
+using public methods:
 
-- `await self._registry._add_device(device: Device)`: When a new device is
+- `await self.registry.register_device(device: Device)`: When a new device is
   found or updated.
-- `await self._registry._remove_device(device_id: DeviceID)`: When a device
+- `await self.registry.unregister_device(device_id: DeviceID)`: When a device
   is lost.
 
 ### 3. Media Playback
