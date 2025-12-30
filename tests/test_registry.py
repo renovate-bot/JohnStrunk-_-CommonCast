@@ -193,11 +193,11 @@ def test_backend_management(registry: _registry.Registry) -> None:
     """
     registry.enable_backend("chromecast")
     backends = registry.list_backends()
-    assert backends["chromecast"]["enabled"] is True
+    assert backends["chromecast"].get("enabled") is True
 
     registry.disable_backend("chromecast")
     backends = registry.list_backends()
-    assert backends["chromecast"]["enabled"] is False
+    assert backends["chromecast"].get("enabled") is False
 
 
 @pytest.mark.asyncio

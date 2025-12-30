@@ -17,11 +17,12 @@ import commoncast.types as _types
 
 if TYPE_CHECKING:
     import commoncast.types as _types_mod
+    from commoncast.registry import Registry
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ChromecastMediaController:
+class ChromecastMediaController(_types.MediaController):
     """Implementation of MediaController for Chromecast devices."""
 
     def __init__(self, cast_device: Any) -> None:
@@ -78,10 +79,10 @@ class ChromecastMediaController:
         await asyncio.to_thread(self._cast.set_volume_muted, mute)
 
 
-class ChromecastAdapter:
+class ChromecastAdapter(_types.BackendAdapter):
     """Adapter for Chromecast devices."""
 
-    def __init__(self, registry: Any) -> None:
+    def __init__(self, registry: Registry) -> None:
         """Initialize the adapter.
 
         :param registry: The CommonCast registry instance.
@@ -143,10 +144,10 @@ class ChromecastAdapter:
         self._discovered_casts.pop(uuid_val, None)
 
         # Notify registry
-        if hasattr(self._registry, "_loop") and self._registry._loop:
-            self._registry._loop.call_soon_threadsafe(
+        if hasattr(self._registry, "_loop") and self._registry._loop:  # type: ignore[reportPrivateUsage]
+            self._registry._loop.call_soon_threadsafe(  # type: ignore[reportPrivateUsage]
                 lambda: asyncio.create_task(
-                    self._registry._remove_device(
+                    self._registry._remove_device(  # type: ignore[reportPrivateUsage]
                         _types.DeviceID(str(uuid_val)), reason="lost"
                     )
                 )
@@ -186,9 +187,9 @@ class ChromecastAdapter:
             transport_info={"uuid": str(uuid_val)},
         )
 
-        if hasattr(self._registry, "_loop") and self._registry._loop:
-            self._registry._loop.call_soon_threadsafe(
-                lambda: asyncio.create_task(self._registry._add_device(device))
+        if hasattr(self._registry, "_loop") and self._registry._loop:  # type: ignore[reportPrivateUsage]
+            self._registry._loop.call_soon_threadsafe(  # type: ignore[reportPrivateUsage]
+                lambda: asyncio.create_task(self._registry._add_device(device))  # type: ignore[reportPrivateUsage]
             )
 
     async def send_media(
@@ -224,10 +225,10 @@ class ChromecastAdapter:
                 # Use the embedded server
                 if (
                     hasattr(self._registry, "_media_server")
-                    and self._registry._media_server
+                    and self._registry._media_server  # type: ignore[reportPrivateUsage]
                 ):
                     payload_id = str(uuid.uuid4())
-                    url = self._registry._media_server.register_payload(
+                    url = self._registry._media_server.register_payload(  # type: ignore[reportPrivateUsage]
                         payload_id, media
                     )
                 else:

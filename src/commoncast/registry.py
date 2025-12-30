@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypedDict
 
 import commoncast.chromecast.adapter as _chromecast_adapter
 import commoncast.event as _events
@@ -18,6 +18,12 @@ import commoncast.server as _server
 import commoncast.types as _types
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class BackendInfo(TypedDict, total=False):
+    """Configuration for a backend adapter."""
+
+    enabled: bool
 
 
 def _safe_call_sync(
@@ -57,11 +63,11 @@ class Registry:
         self._event_queue: asyncio.Queue[_events.DeviceEvent] = asyncio.Queue()
         self._subscribers: list[Callable[[_events.DeviceEvent], Awaitable[None]]] = []
         self._subscribers_sync: list[Callable[[_events.DeviceEvent], None]] = []
-        self._backends: dict[str, dict[str, Any]] = {}
-        self._adapters: dict[str, Any] = {}
+        self._backends: dict[str, BackendInfo] = {}
+        self._adapters: dict[str, _types.BackendAdapter] = {}
         self._media_server: _server.MediaServer | None = None
         # Use a set to hold strong references to background tasks
-        self._tasks: set[asyncio.Task[Any]] = set()
+        self._tasks: set[asyncio.Task[None]] = set()
         self._running = False
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -201,16 +207,19 @@ class Registry:
             self._devices.clear()
             self._loop = None
 
-    def start_sync(self, *args: Any, **kwargs: Any) -> None:
+    def start_sync(
+        self, *, media_host: str | None = "0.0.0.0", media_port: int = 0
+    ) -> None:
         """Start the registry synchronously.
 
         Convenience wrapper for start() for consumers that prefer blocking APIs.
 
-        :param args: Positional arguments passed to start().
-        :param kwargs: Keyword arguments passed to start().
+        :param media_host: Host interface to bind the media server to, or None to
+            disable the embedded server.
+        :param media_port: Port to bind the media server to (0 selects a free port).
         :returns: None
         """
-        asyncio.run(self.start(*args, **kwargs))
+        asyncio.run(self.start(media_host=media_host, media_port=media_port))
 
     def stop_sync(self) -> None:
         """Stop the registry synchronously.
@@ -240,7 +249,7 @@ class Registry:
         info = self._backends.setdefault(name, {})
         info["enabled"] = False
 
-    def list_backends(self) -> dict[str, dict[str, Any]]:
+    def list_backends(self) -> dict[str, BackendInfo]:
         """Return a mapping of backend names to their state information.
 
         :returns: Dictionary mapping backend names to their status info.
@@ -260,7 +269,7 @@ class Registry:
             try:
                 # schedule but don't await to avoid blocking; store task to avoid GC
                 # Use ensure_future to handle general Awaitables
-                task: asyncio.Task[Any] = asyncio.ensure_future(cb(ev))
+                task: asyncio.Task[None] = asyncio.ensure_future(cb(ev))
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
             except Exception:
@@ -330,4 +339,4 @@ class Registry:
 
 default_registry = Registry()
 
-__all__ = ["Registry", "default_registry"]
+__all__ = ["BackendInfo", "Registry", "default_registry"]

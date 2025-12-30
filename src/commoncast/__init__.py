@@ -7,13 +7,13 @@ small, async-first surface with synchronous convenience wrappers.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from typing import Any
 
 import commoncast.event as _event
 import commoncast.registry as _registry
 import commoncast.types as _types
 
 # Re-export types for public API
+BackendInfo = _registry.BackendInfo
 Capability = _types.Capability
 Device = _types.Device
 DeviceID = _types.DeviceID
@@ -132,7 +132,7 @@ def disable_backend(name: str) -> None:
     _registry.default_registry.disable_backend(name)
 
 
-def list_backends() -> Mapping[str, dict[str, Any]]:
+def list_backends() -> Mapping[str, BackendInfo]:
     """Return a mapping of available backends to their state information.
 
     :returns: Mapping of backend name to status information.
@@ -141,6 +141,7 @@ def list_backends() -> Mapping[str, dict[str, Any]]:
 
 
 __all__ = [
+    "BackendInfo",
     "Capability",
     "Device",
     "DeviceAdded",
