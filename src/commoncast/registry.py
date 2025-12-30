@@ -205,6 +205,12 @@ class Registry:
                 )
                 await self._publish_event(ev)
             self._devices.clear()
+
+            # Wait for all background tasks to finish (e.g. event delivery)
+            if self._tasks:
+                await asyncio.gather(*self._tasks, return_exceptions=True)
+                self._tasks.clear()
+
             self._loop = None
 
     def start_sync(

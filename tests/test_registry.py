@@ -92,7 +92,10 @@ async def test_subscribe_async(
     assert len(events) == 1
 
 
-def test_subscribe_sync(registry: _registry.Registry, device: _types.Device) -> None:
+@pytest.mark.asyncio
+async def test_subscribe_sync(
+    registry: _registry.Registry, device: _types.Device
+) -> None:
     """Test synchronous subscription.
 
     :param registry: The registry fixture.
@@ -106,11 +109,8 @@ def test_subscribe_sync(registry: _registry.Registry, device: _types.Device) -> 
 
     sub = registry.subscribe_sync(callback)
 
-    async def trigger() -> None:
-        await registry.register_device(device)
-        await asyncio.sleep(0.1)  # Wait for threadpool execution
-
-    asyncio.run(trigger())
+    await registry.register_device(device)
+    await asyncio.sleep(0.1)  # Wait for threadpool execution
 
     assert len(events) == 1
     assert isinstance(events[0], _events.DeviceAdded)

@@ -152,10 +152,8 @@ class MediaServer:
         """
         try:
             # This doesn't actually connect, just picks an interface
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return str(ip)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                return str(s.getsockname()[0])
         except Exception:
             return "127.0.0.1"

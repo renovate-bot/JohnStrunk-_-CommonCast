@@ -17,7 +17,7 @@ async def test_registry_task_cleanup() -> None:
 
     :returns: None
     """
-    registry = _registry.default_registry
+    registry = _registry.Registry()
 
     # Subscribe a dummy callback so tasks are created
     async def dummy_callback(event: _types.DeviceEvent) -> None:
