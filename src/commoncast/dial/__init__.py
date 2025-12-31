@@ -1,0 +1,1 @@
+"""DIAL adapter for CommonCast."""
