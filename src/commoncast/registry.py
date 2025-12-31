@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, TypedDict, cast
 
 import commoncast.chromecast.adapter as _chromecast_adapter
+import commoncast.dlna.adapter as _dlna_adapter
 import commoncast.event as _events
 import commoncast.server as _server
 import commoncast.types as _types
@@ -172,6 +173,10 @@ class Registry:
 
         if name == "chromecast":
             adapter = _chromecast_adapter.ChromecastAdapter(self)
+            self._adapters[name] = adapter
+            await adapter.start()
+        elif name == "dlna":
+            adapter = _dlna_adapter.DlnaAdapter(self)
             self._adapters[name] = adapter
             await adapter.start()
 
