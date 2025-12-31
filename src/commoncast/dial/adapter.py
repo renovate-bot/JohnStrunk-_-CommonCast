@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 DIAL_SERVICE_TYPE = "urn:dial-multiscreen-org:service:dial:1"
+DIAL_VERSION = "2.1"
+CLIENT_FRIENDLY_NAME = "CommonCast"
 DISCOVERY_INTERVAL = 60.0  # Seconds between periodic searches
 
 
@@ -74,7 +76,9 @@ class DialMediaController(_types.MediaController):
             return
 
         try:
-            async with self._session.delete(self._instance_url) as response:
+            async with self._session.delete(
+                self._instance_url, allow_redirects=False
+            ) as response:
                 if response.status not in (200, 204):
                     _LOGGER.error("Failed to stop DIAL instance: %s", response.status)
         except Exception:
@@ -216,9 +220,8 @@ class DialAdapter(_types.BackendAdapter):
             return
 
         try:
-            app_url, friendly_name, model_name = await self._fetch_device_info(
-                device, dtype
-            )
+            info = await self._fetch_device_info(device, dtype)
+            app_url, friendly_name, model_name, wakeup_info = info
 
             if not app_url:
                 _LOGGER.debug("Could not find Application-URL for %s", location)
@@ -230,35 +233,40 @@ class DialAdapter(_types.BackendAdapter):
                 "app_url": app_url,
             }
 
-            await self._register_device(device.udn, friendly_name, model_name, app_url)
+            await self._register_device(
+                device.udn, friendly_name, model_name, app_url, wakeup_info
+            )
 
         except Exception:
             _LOGGER.exception("Error processing DIAL device from %s", location)
 
     async def _fetch_device_info(
         self, device: SsdpDevice, dtype: str
-    ) -> tuple[str | None, str, str]:
+    ) -> tuple[str | None, str, str, dict[str, str]]:
         """Fetch DIAL device information from SSDP and location URL.
 
         :param device: The SSDP device object.
         :param dtype: Device type string.
-        :returns: A tuple of (app_url, friendly_name, model_name).
+        :returns: A tuple of (app_url, friendly_name, model_name, wakeup_info).
         """
         location = device.location
         if not location:
-            return None, "DIAL Device", "Generic DIAL"
+            return None, "DIAL Device", "Generic DIAL", {}
 
-        # 1. Try to find Application-URL in SSDP headers
+        # 1. Try to find Application-URL and WAKEUP in SSDP headers
         app_url: str | None = None
+        wakeup_info: dict[str, str] = {}
         ssdp_headers = cast(
             Mapping[Any, Any],
             device.search_headers.get(dtype) or device.advertisement_headers.get(dtype),
         )
         if ssdp_headers:
             for key, value in ssdp_headers.items():
-                if str(key).lower() == "application-url":
+                k = str(key).lower()
+                if k == "application-url":
                     app_url = str(value)
-                    break
+                elif k == "wakeup":
+                    wakeup_info = self._parse_wakeup_header(str(value))
 
         friendly_name = "DIAL Device"
         model_name = "Generic DIAL"
@@ -266,7 +274,9 @@ class DialAdapter(_types.BackendAdapter):
         # 2. Fetch device description for friendly name and potentially Application-URL
         if self._session:
             try:
-                async with self._session.get(location) as response:
+                async with self._session.get(
+                    location, allow_redirects=False
+                ) as response:
                     if response.status == 200:  # noqa: PLR2004
                         if not app_url:
                             app_url = response.headers.get("Application-URL")
@@ -298,7 +308,20 @@ class DialAdapter(_types.BackendAdapter):
             except Exception:
                 _LOGGER.debug("Error fetching DIAL description from %s", location)
 
-        return app_url, friendly_name, model_name
+        return app_url, friendly_name, model_name, wakeup_info
+
+    def _parse_wakeup_header(self, header: str) -> dict[str, str]:
+        """Parse the DIAL WAKEUP header.
+
+        :param header: The WAKEUP header value.
+        :returns: A dictionary of parsed parameters.
+        """
+        params: dict[str, str] = {}
+        for part in header.split(";"):
+            if "=" in part:
+                key, value = part.split("=", 1)
+                params[key.strip().lower()] = value.strip()
+        return params
 
     def _parse_description_xml(
         self, xml_body: str, default_name: str, default_model: str
@@ -328,7 +351,7 @@ class DialAdapter(_types.BackendAdapter):
         return friendly_name, model_name
 
     async def _register_device(
-        self, udn: str, name: str, model: str, app_url: str
+        self, udn: str, name: str, model: str, app_url: str, wakeup_info: dict[str, str]
     ) -> None:
         """Register device with CommonCast registry.
 
@@ -336,6 +359,7 @@ class DialAdapter(_types.BackendAdapter):
         :param name: Friendly name.
         :param model: Model name.
         :param app_url: DIAL Application-URL.
+        :param wakeup_info: Wake-on-LAN information.
         """
         device = _types.Device(
             id=_types.DeviceID(udn),
@@ -346,6 +370,7 @@ class DialAdapter(_types.BackendAdapter):
             transport_info={
                 "udn": udn,
                 "app_url": app_url,
+                "wakeup": wakeup_info,
             },
         )
         await self._registry.register_device(device)
@@ -399,7 +424,21 @@ class DialAdapter(_types.BackendAdapter):
             # For a generic media player, it might be the URL itself.
             # We'll try sending the URL as the POST body.
 
-            async with self._session.post(launch_url, data=url) as response:
+            params = {
+                "friendlyName": CLIENT_FRIENDLY_NAME,
+                "clientDialVer": DIAL_VERSION,
+            }
+            headers = {
+                "Content-Type": "text/plain; charset=utf-8",
+            }
+
+            async with self._session.post(
+                launch_url,
+                params=params,
+                data=url or "",
+                headers=headers,
+                allow_redirects=False,
+            ) as response:
                 if response.status in (200, 201, 204):
                     instance_url = response.headers.get("Location")
                     # If instance_url is relative, resolve it against launch_url

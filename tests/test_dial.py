@@ -88,6 +88,7 @@ async def test_adapter_discovery(registry: _registry.Registry) -> None:
         assert devices[0].name == "Test DIAL Device"
         assert devices[0].transport == "dial"
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+        assert devices[0].transport_info["wakeup"] == {}
 
         await adapter.stop()
 
@@ -132,9 +133,16 @@ async def test_send_media(registry: _registry.Registry) -> None:
     assert result.success
     assert result.controller is not None
 
-    # Check POST was called with correct URL and data
+    # Check POST was called with correct URL, data, params and headers
     mock_session.post.assert_called_once_with(
-        "http://192.168.1.10:8008/apps/YouTube", data="http://example.com/media.mp4"
+        "http://192.168.1.10:8008/apps/YouTube",
+        data="http://example.com/media.mp4",
+        params={
+            "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+            "clientDialVer": _dial_adapter.DIAL_VERSION,
+        },
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        allow_redirects=False,
     )
 
 
@@ -156,7 +164,7 @@ async def test_media_controller(registry: _registry.Registry) -> None:
     mock_session.delete.return_value.__aexit__ = AsyncMock(return_value=None)
 
     await controller.stop()
-    mock_session.delete.assert_called_once_with(instance_url)
+    mock_session.delete.assert_called_once_with(instance_url, allow_redirects=False)
 
     # Test other methods (should be no-ops/warnings)
     await controller.play()
@@ -258,6 +266,10 @@ async def test_adapter_discovery_via_http_header(registry: _registry.Registry) -
         assert len(devices) == 1
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
 
+        mock_session.get.assert_called_with(
+            "http://192.168.1.10:8008/ssdp/device-desc.xml", allow_redirects=False
+        )
+
         await adapter.stop()
 
 
@@ -343,7 +355,14 @@ async def test_send_media_relative_location(registry: _registry.Registry) -> Non
     )
 
     mock_session.post.assert_called_once_with(
-        "http://192.168.1.10:8008/apps/TestApp", data="http://example.com/media.mp4"
+        "http://192.168.1.10:8008/apps/TestApp",
+        data="http://example.com/media.mp4",
+        params={
+            "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+            "clientDialVer": _dial_adapter.DIAL_VERSION,
+        },
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        allow_redirects=False,
     )
 
 
@@ -396,6 +415,12 @@ async def test_send_media_via_media_server(registry: _registry.Registry) -> None
         mock_session.post.assert_called_once_with(
             "http://192.168.1.10:8008/apps/YouTube",
             data="http://127.0.0.1:12345/media/123",
+            params={
+                "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+                "clientDialVer": _dial_adapter.DIAL_VERSION,
+            },
+            headers={"Content-Type": "text/plain; charset=utf-8"},
+            allow_redirects=False,
         )
 
 
