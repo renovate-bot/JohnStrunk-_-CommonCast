@@ -1,5 +1,6 @@
 """Tests for the DLNA backend."""
 
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -100,6 +101,42 @@ async def test_adapter_discovery(
         assert len(devices) == 1
         assert devices[0].name == "Test DLNA Device"
         assert devices[0].transport == "dlna"
+
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_periodic_discovery(registry: _registry.Registry) -> None:
+    """Test that periodic discovery triggers async_search.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dlna_adapter.DlnaAdapter(registry)
+
+    with (
+        patch("commoncast.dlna.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dlna.adapter.UpnpFactory"),
+        patch("commoncast.dlna.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_search = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+
+        await adapter.start()
+
+        # Trigger registry readiness
+        registry._ready_event.set()  # type: ignore[reportPrivateUsage]
+
+        # Wait for the first probe (now immediate, but let it schedule)
+        await asyncio.sleep(0.1)
+
+        assert mock_ssdp.async_search.called
 
         await adapter.stop()
 

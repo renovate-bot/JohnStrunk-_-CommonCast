@@ -5,6 +5,7 @@ This module implements the DLNA backend using async-upnp-client.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import uuid
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
     from commoncast.registry import Registry
 
 _LOGGER = logging.getLogger(__name__)
+
+DISCOVERY_INTERVAL = 60.0  # Seconds between periodic searches
 
 
 class DlnaMediaController(_types.MediaController):
@@ -105,6 +108,7 @@ class DlnaAdapter(_types.BackendAdapter):
         self._discovered_devices: dict[str, DmrDevice] = {}
         self._requester: AiohttpSessionRequester | None = None
         self._session: aiohttp.ClientSession | None = None
+        self._discovery_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start DLNA discovery.
@@ -123,14 +127,22 @@ class DlnaAdapter(_types.BackendAdapter):
         self._ssdp_listener = SsdpListener(async_callback=self._on_device_found)
         await self._ssdp_listener.async_start()
 
-        # Trigger an immediate search
-        await self._ssdp_listener.async_search()
+        # Start periodic discovery task
+        self._discovery_task = asyncio.create_task(self._periodic_discovery())
 
     async def stop(self) -> None:
         """Stop DLNA discovery.
 
         :returns: None
         """
+        if self._discovery_task:
+            self._discovery_task.cancel()
+            try:
+                await self._discovery_task
+            except asyncio.CancelledError:
+                pass
+            self._discovery_task = None
+
         if self._ssdp_listener:
             await self._ssdp_listener.async_stop()
             self._ssdp_listener = None
@@ -142,6 +154,26 @@ class DlnaAdapter(_types.BackendAdapter):
         if self._session:
             await self._session.close()
             self._session = None
+
+    async def _periodic_discovery(self) -> None:
+        """Periodically trigger SSDP search.
+
+        :returns: None
+        """
+        # Wait for the registry to be fully started before sending probes.
+        # This ensures the overall system is ready and avoids race conditions
+        # during rapid startup/shutdown.
+        await self._registry.wait_until_ready()
+
+        while True:
+            try:
+                if self._ssdp_listener:
+                    _LOGGER.debug("Triggering DLNA SSDP search")
+                    await self._ssdp_listener.async_search()
+            except Exception:
+                _LOGGER.exception("Error during periodic DLNA discovery")
+
+            await asyncio.sleep(DISCOVERY_INTERVAL)
 
     async def _on_device_found(
         self, device: SsdpDevice, dtype: str, source: SsdpSource

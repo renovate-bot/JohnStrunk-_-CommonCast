@@ -1,5 +1,6 @@
 """Tests for the DIAL backend."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -42,6 +43,18 @@ async def test_adapter_discovery(registry: _registry.Registry) -> None:
         mock_session = mock_session_class.return_value
         mock_session.close = AsyncMock()
         mock_session.get = MagicMock()
+
+        # Mock GET response for location URL
+        mock_get_response = MagicMock()
+        mock_get_response.status = 200
+        mock_get_response.headers = {}
+        mock_get_response.text = AsyncMock(
+            return_value="<root><device><friendlyName>Test DIAL Device</friendlyName><modelName>Test Model</modelName></device></root>"
+        )
+        mock_session.get.return_value.__aenter__ = AsyncMock(
+            return_value=mock_get_response
+        )
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
 
         mock_factory = mock_factory_class.return_value
         mock_factory.async_create_device = AsyncMock()
@@ -211,9 +224,13 @@ async def test_adapter_discovery_via_http_header(registry: _registry.Registry) -
 
         # Mock GET response for location URL
         mock_get_response = MagicMock()
+        mock_get_response.status = 200
         mock_get_response.headers = {
             "Application-URL": "http://192.168.1.10:8008/apps/"
         }
+        mock_get_response.text = AsyncMock(
+            return_value="<root><device><friendlyName>HTTP Header Device</friendlyName><modelName>Model</modelName></device></root>"
+        )
         mock_session.get.return_value.__aenter__ = AsyncMock(
             return_value=mock_get_response
         )
@@ -240,6 +257,44 @@ async def test_adapter_discovery_via_http_header(registry: _registry.Registry) -
         devices = registry.list_devices()
         assert len(devices) == 1
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_periodic_discovery(registry: _registry.Registry) -> None:
+    """Test that periodic discovery triggers async_search.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dial_adapter.DialAdapter(registry)
+
+    with (
+        patch("commoncast.dial.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dial.adapter.UpnpFactory"),
+        patch("commoncast.dial.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_search = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+
+        # Set a short interval for testing if possible, but it's a constant.
+        # We'll just rely on the initial 1.0s sleep for the first probe.
+        await adapter.start()
+
+        # Trigger registry readiness
+        registry._ready_event.set()  # type: ignore[reportPrivateUsage]
+
+        # Wait for the first probe (now immediate, but let it schedule)
+        await asyncio.sleep(0.1)
+
+        assert mock_ssdp.async_search.called
 
         await adapter.stop()
 
@@ -342,3 +397,75 @@ async def test_send_media_via_media_server(registry: _registry.Registry) -> None
             "http://192.168.1.10:8008/apps/YouTube",
             data="http://127.0.0.1:12345/media/123",
         )
+
+
+@pytest.mark.asyncio
+async def test_adapter_discovery_upnp_failure_fallback(
+    registry: _registry.Registry,
+) -> None:
+    """Test DIAL discovery fallback when UpnpFactory fails but XML parsing succeeds.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dial_adapter.DialAdapter(registry)
+
+    with (
+        patch("commoncast.dial.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dial.adapter.UpnpFactory") as mock_factory_class,
+        patch("commoncast.dial.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+        mock_session.get = MagicMock()
+
+        # Mock GET response for location URL
+        mock_get_response = MagicMock()
+        mock_get_response.status = 200
+        mock_get_response.headers = {
+            "Application-URL": "http://192.168.1.10:8008/apps/"
+        }
+        mock_get_response.text = AsyncMock(
+            return_value="""<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+<device>
+<friendlyName>Fallback Device</friendlyName>
+<modelName>Fallback Model</modelName>
+</device>
+</root>"""
+        )
+        mock_session.get.return_value.__aenter__ = AsyncMock(
+            return_value=mock_get_response
+        )
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_factory = mock_factory_class.return_value
+        # Simulate UpnpFactory failure (e.g., 404 on SCPD)
+        mock_factory.async_create_device = AsyncMock(
+            side_effect=Exception("UPnP Error")
+        )
+
+        await adapter.start()
+
+        mock_ssdp_device = MagicMock()
+        mock_ssdp_device.location = "http://192.168.1.10:8008/ssdp/device-desc.xml"
+        mock_ssdp_device.udn = "uuid:fallback-udn"
+        mock_ssdp_device.search_headers = {}
+        mock_ssdp_device.advertisement_headers = {}
+
+        await adapter._on_device_found(  # type: ignore[reportPrivateUsage]
+            mock_ssdp_device, _dial_adapter.DIAL_SERVICE_TYPE, SsdpSource.SEARCH_ALIVE
+        )
+
+        devices = registry.list_devices()
+        assert len(devices) == 1
+        assert devices[0].name == "Fallback Device"
+        assert devices[0].model == "Fallback Model"
+        assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+
+        await adapter.stop()

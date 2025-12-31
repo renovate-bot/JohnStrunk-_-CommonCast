@@ -73,6 +73,7 @@ class Registry:
         self._running = False
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._ready_event = asyncio.Event()
 
     def list_devices(self) -> list[_types.Device]:
         """Return a snapshot list of currently-known devices.
@@ -129,6 +130,13 @@ class Registry:
             ev = await self._event_queue.get()
             yield ev
 
+    async def wait_until_ready(self) -> None:
+        """Wait until the registry and all adapters have started.
+
+        :returns: None
+        """
+        await self._ready_event.wait()
+
     async def start(
         self, *, media_host: str | None = "0.0.0.0", media_port: int = 0
     ) -> None:
@@ -145,6 +153,7 @@ class Registry:
         async with self._lock:
             if self._running:
                 return
+            _LOGGER.info("Starting CommonCast registry")
             self._running = True
             self._loop = asyncio.get_running_loop()
 
@@ -154,15 +163,19 @@ class Registry:
                 )
                 await self._media_server.start()
 
-            # Enable chromecast by default if not explicitly disabled
-            if self._backends.get("chromecast", {}).get("enabled", True):
-                await self._start_adapter("chromecast")
+            # Start all default backends if not explicitly disabled
+            for name in ["chromecast", "dial", "dlna"]:
+                if self._backends.get(name, {}).get("enabled", True):
+                    await self._start_adapter(name)
 
+            # Start any other backends that were explicitly enabled
             for name, info in self._backends.items():
-                if name == "chromecast":
+                if name in ["chromecast", "dial", "dlna"]:
                     continue
                 if info.get("enabled"):
                     await self._start_adapter(name)
+
+            self._ready_event.set()
 
     async def _start_adapter(self, name: str) -> None:
         """Start a named adapter if it exists and is not already running.
@@ -172,6 +185,7 @@ class Registry:
         if name in self._adapters:
             return
 
+        _LOGGER.info("Starting adapter: %s", name)
         if name == "chromecast":
             adapter = _chromecast_adapter.ChromecastAdapter(self)
             self._adapters[name] = adapter
@@ -196,6 +210,8 @@ class Registry:
         async with self._lock:
             if not self._running:
                 return
+            _LOGGER.info("Stopping CommonCast registry")
+            self._ready_event.clear()
             self._running = False
 
             # Stop all adapters
@@ -252,6 +268,7 @@ class Registry:
         :param name: Backend identifier to enable.
         :returns: None
         """
+        _LOGGER.info("Enabling backend: %s", name)
         info = self._backends.setdefault(name, {})
         info.setdefault("enabled", True)
         info["enabled"] = True
@@ -262,6 +279,7 @@ class Registry:
         :param name: Backend identifier to disable.
         :returns: None
         """
+        _LOGGER.info("Disabling backend: %s", name)
         info = self._backends.setdefault(name, {})
         info["enabled"] = False
 
@@ -313,16 +331,24 @@ class Registry:
         :param options: Optional transport-specific options.
         :returns: SendResult describing the outcome.
         """
+        _LOGGER.info("Sending media to device: %s (%s)", device.name, device.id)
         if device.id not in self._devices:
+            _LOGGER.warning("Attempted to send media to unknown device: %s", device.id)
             return _types.SendResult(success=False, reason="device_unknown")
 
         adapter = self._adapters.get(device.transport)
         if not adapter:
+            _LOGGER.warning("Adapter for transport %s not available", device.transport)
             return _types.SendResult(success=False, reason="adapter_not_available")
 
-        return await adapter.send_media(
+        result = await adapter.send_media(
             device, media, format=format, timeout=timeout, options=options
         )
+        if result.success:
+            _LOGGER.info("Media sent successfully to %s", device.id)
+        else:
+            _LOGGER.error("Failed to send media to %s: %s", device.id, result.reason)
+        return result
 
     def schedule_task(self, coro: Awaitable[None]) -> None:
         """Schedule a coroutine to run on the registry's event loop (thread-safe).
@@ -358,6 +384,12 @@ class Registry:
         :param device: Device to add into the registry.
         :returns: None
         """
+        _LOGGER.info(
+            "Registering device: %s (%s) via %s",
+            device.name,
+            device.id,
+            device.transport,
+        )
         self._devices[device.id] = device
         ev = _events.DeviceAdded(timestamp=datetime.now(timezone.utc), device=device)
         await self._publish_event(ev)
@@ -372,6 +404,13 @@ class Registry:
         :returns: None
         """
         if device_id in self._devices:
+            device = self._devices[device_id]
+            _LOGGER.info(
+                "Unregistering device: %s (%s), reason: %s",
+                device.name,
+                device_id,
+                reason,
+            )
             self._devices.pop(device_id)
             ev = _events.DeviceRemoved(
                 timestamp=datetime.now(timezone.utc),

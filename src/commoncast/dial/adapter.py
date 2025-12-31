@@ -5,8 +5,10 @@ This module implements the DIAL (Discovery and Launch) backend.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 DIAL_SERVICE_TYPE = "urn:dial-multiscreen-org:service:dial:1"
+DISCOVERY_INTERVAL = 60.0  # Seconds between periodic searches
 
 
 class DialMediaController(_types.MediaController):
@@ -116,6 +119,7 @@ class DialAdapter(_types.BackendAdapter):
         self._discovered_devices: dict[str, dict[str, Any]] = {}
         self._session: aiohttp.ClientSession | None = None
         self._requester: AiohttpSessionRequester | None = None
+        self._discovery_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start DIAL discovery.
@@ -135,14 +139,22 @@ class DialAdapter(_types.BackendAdapter):
         )
         await self._ssdp_listener.async_start()
 
-        # Search for DIAL service
-        await self._ssdp_listener.async_search()
+        # Start periodic discovery task
+        self._discovery_task = asyncio.create_task(self._periodic_discovery())
 
     async def stop(self) -> None:
         """Stop DIAL discovery.
 
         :returns: None
         """
+        if self._discovery_task:
+            self._discovery_task.cancel()
+            try:
+                await self._discovery_task
+            except asyncio.CancelledError:
+                pass
+            self._discovery_task = None
+
         if self._ssdp_listener:
             await self._ssdp_listener.async_stop()
             self._ssdp_listener = None
@@ -154,6 +166,26 @@ class DialAdapter(_types.BackendAdapter):
         if self._session:
             await self._session.close()
             self._session = None
+
+    async def _periodic_discovery(self) -> None:
+        """Periodically trigger SSDP search.
+
+        :returns: None
+        """
+        # Wait for the registry to be fully started before sending probes.
+        # This ensures the overall system is ready and avoids race conditions
+        # during rapid startup/shutdown.
+        await self._registry.wait_until_ready()
+
+        while True:
+            try:
+                if self._ssdp_listener:
+                    _LOGGER.debug("Triggering DIAL SSDP search")
+                    await self._ssdp_listener.async_search()
+            except Exception:
+                _LOGGER.exception("Error during periodic DIAL discovery")
+
+            await asyncio.sleep(DISCOVERY_INTERVAL)
 
     async def _on_device_found(
         self, device: SsdpDevice, dtype: str, source: SsdpSource
@@ -184,34 +216,9 @@ class DialAdapter(_types.BackendAdapter):
             return
 
         try:
-            # We need to find the Application-URL.
-            # It might be in the SSDP headers.
-            app_url: str | None = None
-            headers = cast(
-                Mapping[Any, Any],
-                device.search_headers.get(dtype)
-                or device.advertisement_headers.get(dtype),
+            app_url, friendly_name, model_name = await self._fetch_device_info(
+                device, dtype
             )
-            if headers:
-                # Case-insensitive check for Application-URL
-                for key, value in headers.items():
-                    if str(key).lower() == "application-url":
-                        app_url = str(value)
-                        break
-
-            friendly_name = "DIAL Device"
-            model_name = "Generic DIAL"
-
-            # Fetch device description for friendly name and potentially Application-URL
-            if self._upnp_factory:
-                upnp_device = await self._upnp_factory.async_create_device(location)
-                friendly_name = upnp_device.friendly_name
-                model_name = upnp_device.model_name
-
-                if not app_url and self._session:
-                    # If not in SSDP headers, we must fetch it from the Location URL headers.
-                    async with self._session.get(location) as response:
-                        app_url = response.headers.get("Application-URL")
 
             if not app_url:
                 _LOGGER.debug("Could not find Application-URL for %s", location)
@@ -227,6 +234,98 @@ class DialAdapter(_types.BackendAdapter):
 
         except Exception:
             _LOGGER.exception("Error processing DIAL device from %s", location)
+
+    async def _fetch_device_info(
+        self, device: SsdpDevice, dtype: str
+    ) -> tuple[str | None, str, str]:
+        """Fetch DIAL device information from SSDP and location URL.
+
+        :param device: The SSDP device object.
+        :param dtype: Device type string.
+        :returns: A tuple of (app_url, friendly_name, model_name).
+        """
+        location = device.location
+        if not location:
+            return None, "DIAL Device", "Generic DIAL"
+
+        # 1. Try to find Application-URL in SSDP headers
+        app_url: str | None = None
+        ssdp_headers = cast(
+            Mapping[Any, Any],
+            device.search_headers.get(dtype) or device.advertisement_headers.get(dtype),
+        )
+        if ssdp_headers:
+            for key, value in ssdp_headers.items():
+                if str(key).lower() == "application-url":
+                    app_url = str(value)
+                    break
+
+        friendly_name = "DIAL Device"
+        model_name = "Generic DIAL"
+
+        # 2. Fetch device description for friendly name and potentially Application-URL
+        if self._session:
+            try:
+                async with self._session.get(location) as response:
+                    if response.status == 200:  # noqa: PLR2004
+                        if not app_url:
+                            app_url = response.headers.get("Application-URL")
+
+                        body = await response.text()
+
+                        # Try UpnpFactory first
+                        try:
+                            if self._upnp_factory:
+                                upnp_dev = await self._upnp_factory.async_create_device(
+                                    location
+                                )
+                                friendly_name = upnp_dev.friendly_name
+                                model_name = upnp_dev.model_name
+                        except Exception:
+                            _LOGGER.debug(
+                                "UpnpFactory failed for %s, parsing XML manually",
+                                location,
+                            )
+                            friendly_name, model_name = self._parse_description_xml(
+                                body, friendly_name, model_name
+                            )
+                    else:
+                        _LOGGER.warning(
+                            "Failed to fetch DIAL description from %s: %s",
+                            location,
+                            response.status,
+                        )
+            except Exception:
+                _LOGGER.debug("Error fetching DIAL description from %s", location)
+
+        return app_url, friendly_name, model_name
+
+    def _parse_description_xml(
+        self, xml_body: str, default_name: str, default_model: str
+    ) -> tuple[str, str]:
+        """Manually parse UPnP device description XML for metadata.
+
+        :param xml_body: The XML body string.
+        :param default_name: Default friendly name.
+        :param default_model: Default model name.
+        :returns: A tuple of (friendly_name, model_name).
+        """
+        friendly_name = default_name
+        model_name = default_model
+        try:
+            root = ET.fromstring(xml_body)
+            ns = {"ns": "urn:schemas-upnp-org:device-1-0"}
+            device_el = root.find(".//ns:device", ns)
+            if device_el is not None:
+                fname_el = device_el.find("ns:friendlyName", ns)
+                if fname_el is not None:
+                    friendly_name = fname_el.text or friendly_name
+                mname_el = device_el.find("ns:modelName", ns)
+                if mname_el is not None:
+                    model_name = mname_el.text or model_name
+        except Exception:
+            _LOGGER.debug("Manual XML parsing failed")
+        return friendly_name, model_name
 
     async def _register_device(
         self, udn: str, name: str, model: str, app_url: str
