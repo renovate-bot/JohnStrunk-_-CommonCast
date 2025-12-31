@@ -1,5 +1,6 @@
 """Tests for the DIAL backend."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -240,6 +241,44 @@ async def test_adapter_discovery_via_http_header(registry: _registry.Registry) -
         devices = registry.list_devices()
         assert len(devices) == 1
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_periodic_discovery(registry: _registry.Registry) -> None:
+    """Test that periodic discovery triggers async_search.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dial_adapter.DialAdapter(registry)
+
+    with (
+        patch("commoncast.dial.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dial.adapter.UpnpFactory"),
+        patch("commoncast.dial.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_search = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+
+        # Set a short interval for testing if possible, but it's a constant.
+        # We'll just rely on the initial 1.0s sleep for the first probe.
+        await adapter.start()
+
+        # Trigger registry readiness
+        registry._ready_event.set()  # type: ignore[reportPrivateUsage]
+
+        # Wait for the first probe (now immediate, but let it schedule)
+        await asyncio.sleep(0.1)
+
+        assert mock_ssdp.async_search.called
 
         await adapter.stop()
 

@@ -73,6 +73,7 @@ class Registry:
         self._running = False
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._ready_event = asyncio.Event()
 
     def list_devices(self) -> list[_types.Device]:
         """Return a snapshot list of currently-known devices.
@@ -129,6 +130,13 @@ class Registry:
             ev = await self._event_queue.get()
             yield ev
 
+    async def wait_until_ready(self) -> None:
+        """Wait until the registry and all adapters have started.
+
+        :returns: None
+        """
+        await self._ready_event.wait()
+
     async def start(
         self, *, media_host: str | None = "0.0.0.0", media_port: int = 0
     ) -> None:
@@ -167,6 +175,8 @@ class Registry:
                 if info.get("enabled"):
                     await self._start_adapter(name)
 
+            self._ready_event.set()
+
     async def _start_adapter(self, name: str) -> None:
         """Start a named adapter if it exists and is not already running.
 
@@ -201,6 +211,7 @@ class Registry:
             if not self._running:
                 return
             _LOGGER.info("Stopping CommonCast registry")
+            self._ready_event.clear()
             self._running = False
 
             # Stop all adapters

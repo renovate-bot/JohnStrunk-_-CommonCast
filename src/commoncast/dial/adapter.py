@@ -5,6 +5,7 @@ This module implements the DIAL (Discovery and Launch) backend.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Mapping
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 DIAL_SERVICE_TYPE = "urn:dial-multiscreen-org:service:dial:1"
+DISCOVERY_INTERVAL = 60.0  # Seconds between periodic searches
 
 
 class DialMediaController(_types.MediaController):
@@ -116,6 +118,7 @@ class DialAdapter(_types.BackendAdapter):
         self._discovered_devices: dict[str, dict[str, Any]] = {}
         self._session: aiohttp.ClientSession | None = None
         self._requester: AiohttpSessionRequester | None = None
+        self._discovery_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start DIAL discovery.
@@ -135,14 +138,22 @@ class DialAdapter(_types.BackendAdapter):
         )
         await self._ssdp_listener.async_start()
 
-        # Search for DIAL service
-        await self._ssdp_listener.async_search()
+        # Start periodic discovery task
+        self._discovery_task = asyncio.create_task(self._periodic_discovery())
 
     async def stop(self) -> None:
         """Stop DIAL discovery.
 
         :returns: None
         """
+        if self._discovery_task:
+            self._discovery_task.cancel()
+            try:
+                await self._discovery_task
+            except asyncio.CancelledError:
+                pass
+            self._discovery_task = None
+
         if self._ssdp_listener:
             await self._ssdp_listener.async_stop()
             self._ssdp_listener = None
@@ -154,6 +165,26 @@ class DialAdapter(_types.BackendAdapter):
         if self._session:
             await self._session.close()
             self._session = None
+
+    async def _periodic_discovery(self) -> None:
+        """Periodically trigger SSDP search.
+
+        :returns: None
+        """
+        # Wait for the registry to be fully started before sending probes.
+        # This ensures the overall system is ready and avoids race conditions
+        # during rapid startup/shutdown.
+        await self._registry.wait_until_ready()
+
+        while True:
+            try:
+                if self._ssdp_listener:
+                    _LOGGER.debug("Triggering DIAL SSDP search")
+                    await self._ssdp_listener.async_search()
+            except Exception:
+                _LOGGER.exception("Error during periodic DIAL discovery")
+
+            await asyncio.sleep(DISCOVERY_INTERVAL)
 
     async def _on_device_found(
         self, device: SsdpDevice, dtype: str, source: SsdpSource
