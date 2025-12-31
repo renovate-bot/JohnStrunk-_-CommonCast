@@ -394,11 +394,11 @@ class DialAdapter(_types.BackendAdapter):
         :returns: SendResult.
         """
         app_url = device.transport_info.get("app_url")
-        if not app_url:
-            return _types.SendResult(success=False, reason="missing_app_url")
-
-        if self._session is None:
-            return _types.SendResult(success=False, reason="no_session")
+        if not app_url or self._session is None:
+            return _types.SendResult(
+                success=False,
+                reason="missing_app_url" if not app_url else "no_session",
+            )
 
         # Options can specify the app name. Default to "YouTube" as a common one,
         # or maybe we should have a better default.
@@ -410,6 +410,25 @@ class DialAdapter(_types.BackendAdapter):
         launch_url = app_url + app_name
 
         try:
+            # 1. Query application information (Recommended discovery flow)
+            # This checks if the app exists and its current state.
+            async with self._session.get(
+                launch_url,
+                params={"clientDialVer": DIAL_VERSION},
+                allow_redirects=False,
+            ) as response:
+                if response.status == 404:  # noqa: PLR2004
+                    return _types.SendResult(
+                        success=False, reason=f"Application {app_name} not found"
+                    )
+                if response.status != 200:  # noqa: PLR2004
+                    _LOGGER.warning(
+                        "Unexpected status during app discovery for %s: %s",
+                        app_name,
+                        response.status,
+                    )
+
+            # 2. Launch the application (or update its content if already running)
             url = media.url
             if not url:
                 payload_id = str(uuid.uuid4())
@@ -418,11 +437,6 @@ class DialAdapter(_types.BackendAdapter):
                     return _types.SendResult(
                         success=False, reason="media_server_not_available"
                     )
-
-            # DIAL launch payload is app-specific.
-            # For YouTube, it's often v=[videoId]
-            # For a generic media player, it might be the URL itself.
-            # We'll try sending the URL as the POST body.
 
             params = {
                 "friendlyName": CLIENT_FRIENDLY_NAME,
