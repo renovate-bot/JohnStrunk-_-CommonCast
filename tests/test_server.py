@@ -69,6 +69,8 @@ async def test_serve_bytes() -> None:
             assert response.status == 200
             assert await response.text() == "hello world"
             assert response.content_type == "text/plain"
+            assert response.headers["transferMode.dlna.org"] == "Streaming"
+            assert "contentFeatures.dlna.org" in response.headers
 
     await server.stop()
 
@@ -93,6 +95,8 @@ async def test_serve_file(tmp_path: Path) -> None:
         async with session.get(url) as response:
             assert response.status == 200
             assert await response.text() == "file content"
+            assert response.headers["transferMode.dlna.org"] == "Streaming"
+            assert "contentFeatures.dlna.org" in response.headers
 
     # Test file not found
     test_file.unlink()

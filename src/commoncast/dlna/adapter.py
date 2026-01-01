@@ -213,21 +213,40 @@ class DlnaAdapter(_types.BackendAdapter):
 
             upnp_device = await self._upnp_factory.async_create_device(location)
 
+            # Check for DLNA compliance via X_DLNADOC
+            dlna_doc: str | None = None
+            try:
+                if hasattr(upnp_device, "xml"):
+                    root = upnp_device.xml
+                    # Handle namespaces. DLNA namespace is typically urn:schemas-dlna-org:device-1-0
+                    namespaces = {"dlna": "urn:schemas-dlna-org:device-1-0"}
+                    # The X_DLNADOC element is usually under the device element
+                    # We look for it recursively or just in the device description
+                    for doc in root.findall(".//dlna:X_DLNADOC", namespaces):
+                        if doc.text:
+                            dlna_doc = doc.text.strip()
+                            break
+            except Exception:
+                _LOGGER.debug("Failed to parse device XML for X_DLNADOC", exc_info=True)
+
             # Wrap in DmrDevice
             # DmrDevice init: (device: UpnpDevice, event_handler: UpnpEventHandler | None)
             dmr = DmrDevice(upnp_device, None)
             self._discovered_devices[device.udn] = dmr
 
-            await self._register_device(dmr, location)
+            await self._register_device(dmr, location, dlna_doc)
 
         except Exception:
             _LOGGER.exception("Error creating UPnP device from %s", location)
 
-    async def _register_device(self, dmr: DmrDevice, location: str) -> None:
+    async def _register_device(
+        self, dmr: DmrDevice, location: str, dlna_doc: str | None = None
+    ) -> None:
         """Register device with CommonCast registry.
 
         :param dmr: The DmrDevice wrapper.
         :param location: The location URL of the device description.
+        :param dlna_doc: The value of the X_DLNADOC element, if present.
         """
         device = dmr.device
 
@@ -254,6 +273,8 @@ class DlnaAdapter(_types.BackendAdapter):
             "friendly_name": device.friendly_name,
             "model_name": device.model_name,
         }
+        if dlna_doc:
+            transport_info["dlna_doc"] = dlna_doc
 
         cc_device = _types.Device(
             id=_types.DeviceID(device.udn),
@@ -301,6 +322,14 @@ class DlnaAdapter(_types.BackendAdapter):
                         success=False, reason="media_server_not_available"
                     )
 
+            # DLNA 10.1.3.10.1: References to content binaries must be absolute URIs
+            if not (url.startswith("http://") or url.startswith("https://")):
+                _LOGGER.warning(
+                    "Media URL '%s' does not appear to be an absolute HTTP URI, "
+                    "which may fail on DLNA devices.",
+                    url,
+                )
+
             mime_type = media.mime_type or "application/octet-stream"
             if not media.mime_type and media.path:
                 mime_type, _ = mimetypes.guess_type(str(media.path))
@@ -316,6 +345,13 @@ class DlnaAdapter(_types.BackendAdapter):
             metadata = await dmr.construct_play_media_metadata(
                 url, media_title=title, override_mime_type=mime_type
             )
+
+            # Inject DLNA protocol flags for better compatibility
+            # We want "http-get:*:{mime_type}:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+            dlna_flags = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+            target_proto = f"http-get:*:{mime_type}:*"
+            replacement_proto = f"http-get:*:{mime_type}:{dlna_flags}"
+            metadata = metadata.replace(target_proto, replacement_proto)
 
             await dmr.async_set_transport_uri(  # type: ignore[reportUnknownMemberType]
                 url, media_title=title, meta_data=metadata
