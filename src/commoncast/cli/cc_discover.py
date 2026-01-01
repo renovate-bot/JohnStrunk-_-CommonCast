@@ -42,14 +42,19 @@ async def discover_devices(timeout: float) -> None:
         return
 
     # Determine column widths
-    headers = ["Name", "ID", "Type", "Model"]
+    headers = ["Name", "ID", "Type", "Model", "Media Types"]
 
     # Calculate max width for each column, starting with header length
     widths = [len(h) for h in headers]
     rows: list[list[str]] = []
 
     for d in devices:
-        row = [d.name, str(d.id), d.transport, d.model or "N/A"]
+        media_types = ", ".join(sorted(d.media_types)) or "Unknown"
+        # Truncate media types if too long
+        if len(media_types) > 50:  # noqa: PLR2004
+            media_types = media_types[:47] + "..."
+
+        row = [d.name, str(d.id), d.transport, d.model or "N/A", media_types]
         rows.append(row)
         for i, col in enumerate(row):
             widths[i] = max(widths[i], len(col))

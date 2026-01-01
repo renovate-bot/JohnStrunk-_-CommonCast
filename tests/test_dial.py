@@ -88,6 +88,8 @@ async def test_adapter_discovery(registry: _registry.Registry) -> None:
         assert devices[0].name == "Test DIAL Device"
         assert devices[0].transport == "dial"
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+        assert devices[0].transport_info["wakeup"] == {}
+        assert devices[0].media_types == set()
 
         await adapter.stop()
 
@@ -119,6 +121,12 @@ async def test_send_media(registry: _registry.Registry) -> None:
 
     payload = _types.MediaPayload.from_url("http://example.com/media.mp4")
 
+    # Mock GET response (Recommended discovery flow)
+    mock_get_response = MagicMock()
+    mock_get_response.status = 200
+    mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_get_response)
+    mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
     # Mock POST response
     mock_response = MagicMock()
     mock_response.status = 201
@@ -132,9 +140,23 @@ async def test_send_media(registry: _registry.Registry) -> None:
     assert result.success
     assert result.controller is not None
 
-    # Check POST was called with correct URL and data
+    # Check GET was called (Recommended discovery flow)
+    mock_session.get.assert_called_with(
+        "http://192.168.1.10:8008/apps/YouTube",
+        params={"clientDialVer": _dial_adapter.DIAL_VERSION},
+        allow_redirects=False,
+    )
+
+    # Check POST was called with correct URL, data, params and headers
     mock_session.post.assert_called_once_with(
-        "http://192.168.1.10:8008/apps/YouTube", data="http://example.com/media.mp4"
+        "http://192.168.1.10:8008/apps/YouTube",
+        data="http://example.com/media.mp4",
+        params={
+            "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+            "clientDialVer": _dial_adapter.DIAL_VERSION,
+        },
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        allow_redirects=False,
     )
 
 
@@ -156,7 +178,7 @@ async def test_media_controller(registry: _registry.Registry) -> None:
     mock_session.delete.return_value.__aexit__ = AsyncMock(return_value=None)
 
     await controller.stop()
-    mock_session.delete.assert_called_once_with(instance_url)
+    mock_session.delete.assert_called_once_with(instance_url, allow_redirects=False)
 
     # Test other methods (should be no-ops/warnings)
     await controller.play()
@@ -258,6 +280,10 @@ async def test_adapter_discovery_via_http_header(registry: _registry.Registry) -
         assert len(devices) == 1
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
 
+        mock_session.get.assert_called_with(
+            "http://192.168.1.10:8008/ssdp/device-desc.xml", allow_redirects=False
+        )
+
         await adapter.stop()
 
 
@@ -324,6 +350,12 @@ async def test_send_media_relative_location(registry: _registry.Registry) -> Non
 
     payload = _types.MediaPayload.from_url("http://example.com/media.mp4")
 
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.status = 200
+    mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_get_response)
+    mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
     # Mock POST response with relative Location
     mock_response = MagicMock()
     mock_response.status = 201
@@ -342,8 +374,21 @@ async def test_send_media_relative_location(registry: _registry.Registry) -> Non
         == "http://192.168.1.10:8008/apps/TestApp/run/123"
     )
 
+    mock_session.get.assert_called_with(
+        "http://192.168.1.10:8008/apps/TestApp",
+        params={"clientDialVer": _dial_adapter.DIAL_VERSION},
+        allow_redirects=False,
+    )
+
     mock_session.post.assert_called_once_with(
-        "http://192.168.1.10:8008/apps/TestApp", data="http://example.com/media.mp4"
+        "http://192.168.1.10:8008/apps/TestApp",
+        data="http://example.com/media.mp4",
+        params={
+            "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+            "clientDialVer": _dial_adapter.DIAL_VERSION,
+        },
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        allow_redirects=False,
     )
 
 
@@ -382,6 +427,14 @@ async def test_send_media_via_media_server(registry: _registry.Registry) -> None
             data=b"dummy",
         )
 
+        # Mock GET response
+        mock_get_response = MagicMock()
+        mock_get_response.status = 200
+        mock_session.get.return_value.__aenter__ = AsyncMock(
+            return_value=mock_get_response
+        )
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
         mock_response = MagicMock()
         mock_response.status = 200
         mock_response.headers = {}
@@ -393,9 +446,22 @@ async def test_send_media_via_media_server(registry: _registry.Registry) -> None
         result = await adapter.send_media(device, payload)
 
         assert result.success
+
+        mock_session.get.assert_called_with(
+            "http://192.168.1.10:8008/apps/YouTube",
+            params={"clientDialVer": _dial_adapter.DIAL_VERSION},
+            allow_redirects=False,
+        )
+
         mock_session.post.assert_called_once_with(
             "http://192.168.1.10:8008/apps/YouTube",
             data="http://127.0.0.1:12345/media/123",
+            params={
+                "friendlyName": _dial_adapter.CLIENT_FRIENDLY_NAME,
+                "clientDialVer": _dial_adapter.DIAL_VERSION,
+            },
+            headers={"Content-Type": "text/plain; charset=utf-8"},
+            allow_redirects=False,
         )
 
 
@@ -467,5 +533,110 @@ async def test_adapter_discovery_upnp_failure_fallback(
         assert devices[0].name == "Fallback Device"
         assert devices[0].model == "Fallback Model"
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
+
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_wakeup_header_parsing(registry: _registry.Registry) -> None:
+    """Test parsing of the DIAL WAKEUP SSDP header.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dial_adapter.DialAdapter(registry)
+
+    with (
+        patch("commoncast.dial.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dial.adapter.UpnpFactory"),
+        patch("commoncast.dial.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+        mock_session.get = MagicMock()
+
+        # Mock GET response for location URL
+        mock_get_response = MagicMock()
+        mock_get_response.status = 200
+        mock_get_response.headers = {
+            "Application-URL": "http://192.168.1.10:8008/apps/"
+        }
+        mock_get_response.text = AsyncMock(
+            return_value="<root><device><friendlyName>Wakeup Device</friendlyName></device></root>"
+        )
+        mock_session.get.return_value.__aenter__ = AsyncMock(
+            return_value=mock_get_response
+        )
+        mock_session.get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        await adapter.start()
+
+        # Simulate device found with WAKEUP header
+        mock_ssdp_device = MagicMock()
+        mock_ssdp_device.location = "http://192.168.1.10:8008/ssdp/device-desc.xml"
+        mock_ssdp_device.udn = "uuid:wakeup-test-udn"
+        mock_ssdp_device.search_headers = {
+            _dial_adapter.DIAL_SERVICE_TYPE: {
+                "Application-URL": "http://192.168.1.10:8008/apps/",
+                "WAKEUP": "MAC=10:dd:b1:c9:00:e4;Timeout=10",
+            }
+        }
+        mock_ssdp_device.advertisement_headers = {}
+
+        await adapter._on_device_found(  # type: ignore[reportPrivateUsage]
+            mock_ssdp_device, _dial_adapter.DIAL_SERVICE_TYPE, SsdpSource.SEARCH_ALIVE
+        )
+
+        devices = registry.list_devices()
+        assert len(devices) == 1
+        wakeup_info = devices[0].transport_info["wakeup"]
+        assert wakeup_info["mac"] == "10:dd:b1:c9:00:e4"
+        assert wakeup_info["timeout"] == "10"
+
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_redirects_disallowed(registry: _registry.Registry) -> None:
+    """Test that redirects are disallowed for DIAL requests.
+
+    :param registry: The Registry fixture.
+    :returns: None
+    """
+    adapter = _dial_adapter.DialAdapter(registry)
+
+    with (
+        patch("commoncast.dial.adapter.SsdpListener") as mock_ssdp_class,
+        patch("commoncast.dial.adapter.UpnpFactory"),
+        patch("commoncast.dial.adapter.AiohttpSessionRequester"),
+        patch("aiohttp.ClientSession") as mock_session_class,
+    ):
+        mock_ssdp = mock_ssdp_class.return_value
+        mock_ssdp.async_start = AsyncMock()
+        mock_ssdp.async_stop = AsyncMock()
+
+        mock_session = mock_session_class.return_value
+        mock_session.close = AsyncMock()
+        mock_session.get = MagicMock()
+        mock_session.get.return_value.__aenter__ = AsyncMock()
+        mock_session.get.return_value.__aexit__ = AsyncMock()
+
+        await adapter.start()
+
+        # Check _fetch_device_info calls get with allow_redirects=False
+        mock_ssdp_device = MagicMock()
+        mock_ssdp_device.location = "http://192.168.1.10:8008/desc.xml"
+        await adapter._fetch_device_info(  # type: ignore[reportPrivateUsage]
+            mock_ssdp_device, "any"
+        )
+
+        mock_session.get.assert_called_with(
+            "http://192.168.1.10:8008/desc.xml", allow_redirects=False
+        )
 
         await adapter.stop()

@@ -170,10 +170,26 @@ class ChromecastAdapter(_types.BackendAdapter):
             return
 
         capabilities = {_types.Capability("video"), _types.Capability("audio")}
+        # Standard Chromecast supported types
+        media_types = {
+            "video/mp4",
+            "video/webm",
+            "video/x-matroska",
+            "audio/mp4",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/wav",
+            "audio/webm",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+        }
+
         # In a real implementation, we'd check cast_device.cast_type
         # for more specific capabilities (e.g. Audio only for Chromecast Audio)
         if cast_device.cast_type == "audio":
             capabilities = {_types.Capability("audio")}
+            media_types = {t for t in media_types if t.startswith("audio/")}
 
         device = _types.Device(
             id=_types.DeviceID(str(uuid_val)),
@@ -182,6 +198,7 @@ class ChromecastAdapter(_types.BackendAdapter):
             transport="chromecast",
             capabilities=capabilities,
             transport_info={"uuid": str(uuid_val)},
+            media_types=media_types,
         )
 
         self._registry.schedule_task(self._registry.register_device(device))
