@@ -71,6 +71,8 @@ async def test_adapter_discovery(
         assert len(devices) == 1
         assert devices[0].name == "Test Chromecast"
         assert devices[0].transport == "chromecast"
+        assert "video/mp4" in devices[0].media_types
+        assert "image/jpeg" in devices[0].media_types
 
         # Simulate device lost
         adapter._on_device_lost(mock_cast.uuid, mock_cast.name)  # type: ignore[reportPrivateUsage]

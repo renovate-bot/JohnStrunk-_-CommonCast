@@ -270,6 +270,7 @@ class Device:
     model: str | None
     transport: str
     capabilities: set[Capability]
+    media_types: set[str]
     transport_info: Mapping[str, Any]
 
     def __init__(  # noqa: PLR0913
@@ -280,6 +281,7 @@ class Device:
         transport: str,
         capabilities: set[Capability],
         transport_info: Mapping[str, Any],
+        media_types: set[str] | None = None,
     ) -> None:
         """Initialize a Device instance.
 
@@ -289,6 +291,7 @@ class Device:
         :param transport: Underlying transport name (e.g., "chromecast").
         :param capabilities: Declared device capabilities.
         :param transport_info: Transport-specific connection details.
+        :param media_types: Optional set of supported media MIME types.
         :returns: None
         """
         self.id = id
@@ -297,6 +300,7 @@ class Device:
         self.transport = transport
         self.capabilities = capabilities
         self.transport_info = transport_info
+        self.media_types = media_types or set()
 
     async def send_media(
         self,

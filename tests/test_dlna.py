@@ -85,6 +85,10 @@ async def test_adapter_discovery(
 
         mock_dmr_class.return_value = mock_dmr
         mock_dmr.device = mock_device
+        mock_dmr.supported_protocols = [
+            "http-get:*:video/mp4:*",
+            "http-get:*:audio/mpeg:*",
+        ]
 
         await adapter.start()
 
@@ -101,6 +105,8 @@ async def test_adapter_discovery(
         assert len(devices) == 1
         assert devices[0].name == "Test DLNA Device"
         assert devices[0].transport == "dlna"
+        assert "video/mp4" in devices[0].media_types
+        assert "audio/mpeg" in devices[0].media_types
 
         await adapter.stop()
 

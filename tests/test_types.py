@@ -94,10 +94,13 @@ def test_device_creation() -> None:
         transport="chromecast",
         capabilities={_types.Capability("video"), _types.Capability("audio")},
         transport_info={"ip": "192.168.1.10"},
+        media_types={"video/mp4", "audio/mpeg"},
     )
     assert dev.id == "dev1"
     assert dev.name == "Living Room"
     assert "video" in dev.capabilities
+    assert "video/mp4" in dev.media_types
+    assert "audio/mpeg" in dev.media_types
 
 
 @pytest.mark.asyncio

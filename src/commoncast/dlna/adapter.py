@@ -10,7 +10,7 @@ import logging
 import mimetypes
 import uuid
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import aiohttp
 from async_upnp_client.aiohttp import AiohttpSessionRequester
@@ -233,6 +233,20 @@ class DlnaAdapter(_types.BackendAdapter):
 
         capabilities = {_types.Capability("video"), _types.Capability("audio")}
 
+        # Extract supported media types from protocol info
+        media_types: set[str] = set()
+        # supported_protocols can be a list of strings
+        supported_protocols: list[str] = cast(
+            list[str], getattr(dmr, "supported_protocols", [])
+        )
+        for protocol_info in supported_protocols:
+            # Protocol info format: protocol:network:contentFormat:additionalInfo
+            parts: list[str] = protocol_info.split(":")
+            if len(parts) > 2:  # noqa: PLR2004
+                mime_type: str = parts[2]
+                if mime_type and mime_type != "*":
+                    media_types.add(mime_type)
+
         # Construct transport info
         transport_info = {
             "udn": device.udn,
@@ -248,6 +262,7 @@ class DlnaAdapter(_types.BackendAdapter):
             transport="dlna",
             capabilities=capabilities,
             transport_info=transport_info,
+            media_types=media_types,
         )
 
         await self._registry.register_device(cc_device)

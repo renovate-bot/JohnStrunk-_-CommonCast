@@ -372,6 +372,7 @@ class DialAdapter(_types.BackendAdapter):
                 "app_url": app_url,
                 "wakeup": wakeup_info,
             },
+            media_types=set(),  # DIAL doesn't expose this directly
         )
         await self._registry.register_device(device)
 

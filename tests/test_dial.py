@@ -89,6 +89,7 @@ async def test_adapter_discovery(registry: _registry.Registry) -> None:
         assert devices[0].transport == "dial"
         assert devices[0].transport_info["app_url"] == "http://192.168.1.10:8008/apps/"
         assert devices[0].transport_info["wakeup"] == {}
+        assert devices[0].media_types == set()
 
         await adapter.stop()
 
