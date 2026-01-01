@@ -167,7 +167,14 @@ async def test_send_media(registry: _registry.Registry, mock_dmr: MagicMock) -> 
         transport_info={"udn": "uuid:test-udn"},
     )
 
-    payload = _types.MediaPayload.from_url("http://example.com/media.mp4")
+    payload = _types.MediaPayload.from_url(
+        "http://example.com/media.mp4", mime_type="video/mp4"
+    )
+
+    # Configure mock to return metadata with generic protocol info
+    mock_dmr.construct_play_media_metadata.return_value = (
+        '<DIDL-Lite><res protocolInfo="http-get:*:video/mp4:*">url</res></DIDL-Lite>'
+    )
 
     result = await adapter.send_media(device, payload)
 
@@ -175,7 +182,13 @@ async def test_send_media(registry: _registry.Registry, mock_dmr: MagicMock) -> 
     assert result.controller is not None
 
     mock_dmr.construct_play_media_metadata.assert_called_once()
-    mock_dmr.async_set_transport_uri.assert_called_once()
+
+    # Verify async_set_transport_uri called with injected DLNA flags
+    args, kwargs = mock_dmr.async_set_transport_uri.call_args
+    metadata_arg = kwargs.get("meta_data") or args[2]
+    assert "DLNA.ORG_OP=01" in metadata_arg
+    assert "DLNA.ORG_FLAGS=" in metadata_arg
+
     mock_dmr.async_play.assert_called_once()
 
 

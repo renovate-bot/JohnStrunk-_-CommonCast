@@ -346,6 +346,13 @@ class DlnaAdapter(_types.BackendAdapter):
                 url, media_title=title, override_mime_type=mime_type
             )
 
+            # Inject DLNA protocol flags for better compatibility
+            # We want "http-get:*:{mime_type}:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+            dlna_flags = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+            target_proto = f"http-get:*:{mime_type}:*"
+            replacement_proto = f"http-get:*:{mime_type}:{dlna_flags}"
+            metadata = metadata.replace(target_proto, replacement_proto)
+
             await dmr.async_set_transport_uri(  # type: ignore[reportUnknownMemberType]
                 url, media_title=title, meta_data=metadata
             )

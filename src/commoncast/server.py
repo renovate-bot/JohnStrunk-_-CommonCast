@@ -136,10 +136,16 @@ class MediaServer:
             # For now, let's just redirect.
             raise web.HTTPFound(payload.url)
 
+        headers = {
+            "transferMode.dlna.org": "Streaming",
+            "contentFeatures.dlna.org": "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000",
+        }
+
         if payload.data:
             return web.Response(
                 body=payload.data,
                 content_type=payload.mime_type or "application/octet-stream",
+                headers=headers,
             )
 
         if payload.path:
@@ -148,6 +154,7 @@ class MediaServer:
             return web.FileResponse(
                 payload.path,
                 chunk_size=256 * 1024,
+                headers=headers,
             )
 
         return web.Response(status=400, text="Invalid media payload")
